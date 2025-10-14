@@ -60,10 +60,12 @@ func New(opts ...EngineOption) *Engine {
 		internalBus: event.NewInMemoryBus(
 			event.WithBufferSize(64),
 			event.WithDropSlow(false),
+			event.WithBusName("internal"),
 		),
 		externalBus: event.NewInMemoryBus(
 			event.WithBufferSize(128),
 			event.WithDropSlow(false),
+			event.WithBusName("external"),
 		),
 		clock:    clock.NewSystemClock(),
 		registry: registry.NewInMemoryRegistry(),

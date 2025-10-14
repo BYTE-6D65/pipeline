@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"sync"
+	"time"
+
+	"github.com/BYTE-6D65/pipeline/pkg/telemetry"
 )
 
 // Bus defines the interface for an event bus that supports publish/subscribe patterns.
@@ -48,6 +51,8 @@ type InMemoryBus struct {
 	closed        bool
 	bufferSize    int
 	dropSlow      bool // If true, drop events for slow subscribers; if false, block
+	name          string
+	metrics       *telemetry.Metrics
 }
 
 // BusOption configures an InMemoryBus.
@@ -68,16 +73,37 @@ func WithDropSlow(drop bool) BusOption {
 	}
 }
 
+// WithBusName sets the name for this bus (used in metrics labels).
+func WithBusName(name string) BusOption {
+	return func(b *InMemoryBus) {
+		b.name = name
+	}
+}
+
+// WithMetrics sets the metrics instance for this bus.
+func WithMetrics(metrics *telemetry.Metrics) BusOption {
+	return func(b *InMemoryBus) {
+		b.metrics = metrics
+	}
+}
+
 // NewInMemoryBus creates a new in-memory event bus with the given options.
 func NewInMemoryBus(opts ...BusOption) *InMemoryBus {
 	bus := &InMemoryBus{
 		subscriptions: make(map[string]*inMemorySubscription),
 		bufferSize:    64, // Default buffer size
 		dropSlow:      false,
+		name:          "default",
+		metrics:       telemetry.Default(),
 	}
 
 	for _, opt := range opts {
 		opt(bus)
+	}
+
+	// Update subscriber gauge
+	if bus.metrics != nil {
+		bus.metrics.SubscribersTotal.WithLabelValues(bus.name).Set(0)
 	}
 
 	return bus
@@ -85,6 +111,15 @@ func NewInMemoryBus(opts ...BusOption) *InMemoryBus {
 
 // Publish sends an event to all matching subscribers.
 func (b *InMemoryBus) Publish(ctx context.Context, evt Event) error {
+	// Start timing the entire publish operation
+	publishTimer := telemetry.NewTimer()
+	defer func() {
+		if b.metrics != nil {
+			b.metrics.PublishDuration.WithLabelValues(b.name, evt.Type).Observe(publishTimer.Elapsed().Seconds())
+			b.metrics.EventsPublished.WithLabelValues(b.name, evt.Type).Inc()
+		}
+	}()
+
 	b.mu.RLock()
 	defer b.mu.RUnlock()
 
@@ -95,7 +130,14 @@ func (b *InMemoryBus) Publish(ctx context.Context, evt Event) error {
 	// Collect matching subscriptions
 	var matching []*inMemorySubscription
 	for _, sub := range b.subscriptions {
-		if sub.matches(evt) {
+		// Time the filter matching
+		filterTimer := telemetry.NewTimer()
+		matches := sub.matches(evt)
+		if b.metrics != nil {
+			b.metrics.FilterDuration.WithLabelValues(b.name, sub.id).Observe(filterTimer.Elapsed().Seconds())
+		}
+
+		if matches {
 			matching = append(matching, sub)
 		}
 	}
@@ -106,7 +148,7 @@ func (b *InMemoryBus) Publish(ctx context.Context, evt Event) error {
 		case <-ctx.Done():
 			return ctx.Err()
 		default:
-			sub.send(evt, b.dropSlow)
+			sub.send(evt, b.dropSlow, b.name, b.metrics)
 		}
 	}
 
@@ -123,14 +165,23 @@ func (b *InMemoryBus) Subscribe(ctx context.Context, filter Filter) (Subscriptio
 	}
 
 	sub := &inMemorySubscription{
-		id:     fmt.Sprintf("sub-%d", len(b.subscriptions)),
-		bus:    b,
-		filter: filter,
-		ch:     make(chan Event, b.bufferSize),
-		closed: false,
+		id:         fmt.Sprintf("sub-%d", len(b.subscriptions)),
+		bus:        b,
+		filter:     filter,
+		ch:         make(chan Event, b.bufferSize),
+		closed:     false,
+		bufferSize: b.bufferSize,
 	}
 
 	b.subscriptions[sub.id] = sub
+
+	// Update metrics
+	if b.metrics != nil {
+		b.metrics.SubscribersTotal.WithLabelValues(b.name).Set(float64(len(b.subscriptions)))
+		b.metrics.BufferSize.WithLabelValues(b.name, sub.id).Set(float64(b.bufferSize))
+		b.metrics.BufferUsage.WithLabelValues(b.name, sub.id).Set(0)
+	}
+
 	return sub, nil
 }
 
@@ -156,12 +207,13 @@ func (b *InMemoryBus) Close() error {
 
 // inMemorySubscription represents a single subscription.
 type inMemorySubscription struct {
-	id     string
-	bus    *InMemoryBus
-	filter Filter
-	ch     chan Event
-	mu     sync.Mutex
-	closed bool
+	id         string
+	bus        *InMemoryBus
+	filter     Filter
+	ch         chan Event
+	mu         sync.Mutex
+	closed     bool
+	bufferSize int
 }
 
 // Events returns the channel that receives events.
@@ -176,6 +228,12 @@ func (s *inMemorySubscription) Close() error {
 
 	delete(s.bus.subscriptions, s.id)
 	s.closeChannel()
+
+	// Update metrics
+	if s.bus.metrics != nil {
+		s.bus.metrics.SubscribersTotal.WithLabelValues(s.bus.name).Set(float64(len(s.bus.subscriptions)))
+	}
+
 	return nil
 }
 
@@ -191,7 +249,7 @@ func (s *inMemorySubscription) closeChannel() {
 }
 
 // send attempts to send an event to the subscription channel.
-func (s *inMemorySubscription) send(evt Event, dropSlow bool) {
+func (s *inMemorySubscription) send(evt Event, dropSlow bool, busName string, metrics *telemetry.Metrics) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -199,16 +257,44 @@ func (s *inMemorySubscription) send(evt Event, dropSlow bool) {
 		return
 	}
 
+	// Start timing the send operation (includes blocking time)
+	sendTimer := time.Now()
+
 	if dropSlow {
 		// Non-blocking send, drop event if channel is full
 		select {
 		case s.ch <- evt:
+			// Successful send
+			if metrics != nil {
+				elapsed := time.Since(sendTimer).Seconds()
+				metrics.SendDuration.WithLabelValues(busName, s.id, "success").Observe(elapsed)
+				metrics.BufferUsage.WithLabelValues(busName, s.id).Set(float64(len(s.ch)))
+			}
 		default:
 			// Event dropped due to slow subscriber
+			if metrics != nil {
+				elapsed := time.Since(sendTimer).Seconds()
+				metrics.SendDuration.WithLabelValues(busName, s.id, "dropped").Observe(elapsed)
+				metrics.EventsDropped.WithLabelValues(busName, evt.Type, s.id).Inc()
+			}
 		}
 	} else {
 		// Blocking send, wait for space in channel
+		// Check if we'll block
+		if len(s.ch) >= s.bufferSize {
+			if metrics != nil {
+				metrics.SendBlocked.WithLabelValues(busName, s.id).Inc()
+			}
+		}
+
 		s.ch <- evt
+
+		// Record send duration (includes any blocking time!)
+		if metrics != nil {
+			elapsed := time.Since(sendTimer).Seconds()
+			metrics.SendDuration.WithLabelValues(busName, s.id, "success").Observe(elapsed)
+			metrics.BufferUsage.WithLabelValues(busName, s.id).Set(float64(len(s.ch)))
+		}
 	}
 }
 
