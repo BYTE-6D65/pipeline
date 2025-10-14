@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/BYTE-6D65/pipeline/pkg/emitter"
 	"github.com/BYTE-6D65/pipeline/pkg/event"
@@ -39,28 +40,40 @@ func NewEmitterManager(engine *Engine) *EmitterManager {
 // Register registers an emitter with the manager and its event filter.
 // The emitter is not started until Start() is called.
 // If filter is nil or empty, all events will be routed to this emitter.
-func (m *EmitterManager) Register(id string, emit emitter.Emitter, filter event.Filter) error {
+func (m *EmitterManager) Register(id string, emit emitter.Emitter, filter event.Filter) (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "emitter.register", start, err)
+	}()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	if _, exists := m.emitters[id]; exists {
-		return fmt.Errorf("emitter %s already registered", id)
+		err = fmt.Errorf("emitter %s already registered", id)
+		return
 	}
 
 	m.emitters[id] = emit
 	m.filters[id] = filter
-	return nil
+	return
 }
 
 // Unregister removes an emitter from the manager.
 // If the emitter is running, it will be stopped first.
-func (m *EmitterManager) Unregister(emitterID string) error {
+func (m *EmitterManager) Unregister(emitterID string) (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "emitter.unregister", start, err)
+	}()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	emitter, exists := m.emitters[emitterID]
 	if !exists {
-		return fmt.Errorf("emitter %s not found", emitterID)
+		err = fmt.Errorf("emitter %s not found", emitterID)
+		return
 	}
 
 	// Stop the emitter's subscription
@@ -70,18 +83,24 @@ func (m *EmitterManager) Unregister(emitterID string) error {
 	}
 
 	// Close the emitter
-	if err := emitter.Close(); err != nil {
-		return fmt.Errorf("failed to close emitter %s: %w", emitterID, err)
+	if closeErr := emitter.Close(); closeErr != nil {
+		err = fmt.Errorf("failed to close emitter %s: %w", emitterID, closeErr)
+		return
 	}
 
 	delete(m.emitters, emitterID)
 	delete(m.filters, emitterID)
-	return nil
+	return
 }
 
 // Start starts all registered emitters.
 // Each emitter subscribes to the engine's external bus and processes matching events.
-func (m *EmitterManager) Start() error {
+func (m *EmitterManager) Start() (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "emitter.start", start, err)
+	}()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -110,10 +129,11 @@ func (m *EmitterManager) Start() error {
 	if len(startErrors) > 0 {
 		// Best effort: stop any subscriptions that did start
 		m.stopAll()
-		return fmt.Errorf("failed to start emitters: %v", startErrors)
+		err = fmt.Errorf("failed to start emitters: %v", startErrors)
+		return
 	}
 
-	return nil
+	return
 }
 
 // processEvents is the event processing loop for an emitter.
@@ -145,11 +165,17 @@ func (m *EmitterManager) processEvents(id string, emitter emitter.Emitter, sub e
 }
 
 // Stop stops all running emitters.
-func (m *EmitterManager) Stop() error {
+func (m *EmitterManager) Stop() (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "emitter.stop", start, err)
+	}()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
-	return m.stopAll()
+	err = m.stopAll()
+	return
 }
 
 // stopAll is an internal helper that stops all emitters.
@@ -184,13 +210,19 @@ func (m *EmitterManager) stopAll() error {
 
 // Shutdown gracefully shuts down the emitter manager.
 // It stops all emitters and cancels the context.
-func (m *EmitterManager) Shutdown() error {
+func (m *EmitterManager) Shutdown() (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "emitter.shutdown", start, err)
+	}()
+
 	// Cancel the context (signals all goroutines to stop)
 	m.cancel()
 
 	// Stop all emitters
-	if err := m.Stop(); err != nil {
-		return err
+	if stopErr := m.Stop(); stopErr != nil {
+		err = stopErr
+		return
 	}
 
 	return nil

@@ -135,7 +135,10 @@ chords := store.DetectChords(20*time.Millisecond, 2)
 
 ```go
 // Create engine with internal and external buses
-eng := engine.New()
+// import "github.com/BYTE-6D65/pipeline/pkg/telemetry"
+eng := engine.New(
+    engine.WithMetrics(telemetry.InitMetrics(nil)), // optional: share metrics registry
+)
 
 // Adapter manager
 adapterMgr := engine.NewAdapterManager(eng)
@@ -146,6 +149,13 @@ adapterMgr.Start()
 emitterMgr := engine.NewEmitterManager(eng)
 emitterMgr.Register(myEmitter)
 emitterMgr.Start()
+
+// Lifecycle metrics are available via:
+//   pipeline_engine_operations_total
+//   pipeline_engine_operation_duration_seconds
+// Publish/subscribe latency is exported by the event bus via:
+//   pipeline_event_send_duration_seconds
+//   pipeline_event_send_blocked_total
 ```
 
 ### `pkg/registry` - Generic Key-Value Store

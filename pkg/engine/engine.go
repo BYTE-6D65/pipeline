@@ -3,10 +3,12 @@ package engine
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/BYTE-6D65/pipeline/pkg/clock"
 	"github.com/BYTE-6D65/pipeline/pkg/event"
 	"github.com/BYTE-6D65/pipeline/pkg/registry"
+	"github.com/BYTE-6D65/pipeline/pkg/telemetry"
 )
 
 // Engine wires together core infrastructure components.
@@ -16,6 +18,7 @@ type Engine struct {
 	externalBus event.Bus
 	clock       clock.Clock
 	registry    registry.Registry
+	metrics     *telemetry.Metrics
 }
 
 // EngineOption configures an Engine instance.
@@ -49,6 +52,13 @@ func WithRegistry(reg registry.Registry) EngineOption {
 	}
 }
 
+// WithMetrics sets the telemetry metrics instance.
+func WithMetrics(metrics *telemetry.Metrics) EngineOption {
+	return func(e *Engine) {
+		e.metrics = metrics
+	}
+}
+
 // New creates a new Engine with sensible defaults.
 // Default configuration:
 // - InternalBus: InMemoryBus with 64 buffer, drop-slow disabled
@@ -57,22 +67,35 @@ func WithRegistry(reg registry.Registry) EngineOption {
 // - Registry: InMemoryRegistry
 func New(opts ...EngineOption) *Engine {
 	engine := &Engine{
-		internalBus: event.NewInMemoryBus(
-			event.WithBufferSize(64),
-			event.WithDropSlow(false),
-			event.WithBusName("internal"),
-		),
-		externalBus: event.NewInMemoryBus(
-			event.WithBufferSize(128),
-			event.WithDropSlow(false),
-			event.WithBusName("external"),
-		),
 		clock:    clock.NewSystemClock(),
 		registry: registry.NewInMemoryRegistry(),
+		metrics:  telemetry.Default(),
 	}
 
 	for _, opt := range opts {
 		opt(engine)
+	}
+
+	if engine.metrics == nil {
+		engine.metrics = telemetry.Default()
+	}
+
+	if engine.internalBus == nil {
+		engine.internalBus = event.NewInMemoryBus(
+			event.WithBufferSize(64),
+			event.WithDropSlow(false),
+			event.WithBusName("internal"),
+			event.WithMetrics(engine.metrics),
+		)
+	}
+
+	if engine.externalBus == nil {
+		engine.externalBus = event.NewInMemoryBus(
+			event.WithBufferSize(128),
+			event.WithDropSlow(false),
+			event.WithBusName("external"),
+			event.WithMetrics(engine.metrics),
+		)
 	}
 
 	return engine
@@ -98,9 +121,19 @@ func (e *Engine) Registry() registry.Registry {
 	return e.registry
 }
 
+// Metrics returns the telemetry metrics instance.
+func (e *Engine) Metrics() *telemetry.Metrics {
+	return e.metrics
+}
+
 // Shutdown gracefully shuts down the engine and releases resources.
 // It closes both event buses and waits for the context to complete.
-func (e *Engine) Shutdown(ctx context.Context) error {
+func (e *Engine) Shutdown(ctx context.Context) (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(e.metrics, "engine.shutdown", start, err)
+	}()
+
 	errCh := make(chan error, 2)
 
 	// Close internal bus
@@ -130,13 +163,15 @@ func (e *Engine) Shutdown(ctx context.Context) error {
 				errors = append(errors, err)
 			}
 		case <-ctx.Done():
-			return fmt.Errorf("shutdown cancelled: %w", ctx.Err())
+			err = fmt.Errorf("shutdown cancelled: %w", ctx.Err())
+			return
 		}
 	}
 
 	if len(errors) > 0 {
-		return fmt.Errorf("shutdown errors: %v", errors)
+		err = fmt.Errorf("shutdown errors: %v", errors)
+		return
 	}
 
-	return nil
+	return
 }

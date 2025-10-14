@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/BYTE-6D65/pipeline/pkg/adapter"
 )
@@ -33,42 +34,60 @@ func NewAdapterManager(engine *Engine) *AdapterManager {
 
 // Register registers an adapter with the manager.
 // The adapter is not started until Start() is called.
-func (m *AdapterManager) Register(adapter adapter.Adapter) error {
+func (m *AdapterManager) Register(adapter adapter.Adapter) (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "adapter.register", start, err)
+	}()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	id := adapter.ID()
 	if _, exists := m.adapters[id]; exists {
-		return fmt.Errorf("adapter %s already registered", id)
+		err = fmt.Errorf("adapter %s already registered", id)
+		return
 	}
 
 	m.adapters[id] = adapter
-	return nil
+	return
 }
 
 // Unregister removes an adapter from the manager.
 // If the adapter is running, it will be stopped first.
-func (m *AdapterManager) Unregister(adapterID string) error {
+func (m *AdapterManager) Unregister(adapterID string) (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "adapter.unregister", start, err)
+	}()
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
 	adapter, exists := m.adapters[adapterID]
 	if !exists {
-		return fmt.Errorf("adapter %s not found", adapterID)
+		err = fmt.Errorf("adapter %s not found", adapterID)
+		return
 	}
 
 	// Stop the adapter if it's running
-	if err := adapter.Stop(); err != nil {
-		return fmt.Errorf("failed to stop adapter %s: %w", adapterID, err)
+	if stopErr := adapter.Stop(); stopErr != nil {
+		err = fmt.Errorf("failed to stop adapter %s: %w", adapterID, stopErr)
+		return
 	}
 
 	delete(m.adapters, adapterID)
-	return nil
+	return
 }
 
 // Start starts all registered adapters.
 // Each adapter is connected to the engine's external bus and clock.
-func (m *AdapterManager) Start() error {
+func (m *AdapterManager) Start() (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "adapter.start", start, err)
+	}()
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -84,18 +103,25 @@ func (m *AdapterManager) Start() error {
 	if len(startErrors) > 0 {
 		// Best effort: stop any adapters that did start
 		m.stopAll()
-		return fmt.Errorf("failed to start adapters: %v", startErrors)
+		err = fmt.Errorf("failed to start adapters: %v", startErrors)
+		return
 	}
 
-	return nil
+	return
 }
 
 // Stop stops all running adapters.
-func (m *AdapterManager) Stop() error {
+func (m *AdapterManager) Stop() (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "adapter.stop", start, err)
+	}()
+
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
-	return m.stopAll()
+	err = m.stopAll()
+	return
 }
 
 // stopAll is an internal helper that stops all adapters.
@@ -118,19 +144,25 @@ func (m *AdapterManager) stopAll() error {
 
 // Shutdown gracefully shuts down the adapter manager.
 // It stops all adapters and cancels the context.
-func (m *AdapterManager) Shutdown() error {
+func (m *AdapterManager) Shutdown() (err error) {
+	start := time.Now()
+	defer func() {
+		recordEngineOperation(m.engine.metrics, "adapter.shutdown", start, err)
+	}()
+
 	// Cancel the context (signals all adapters to stop)
 	m.cancel()
 
 	// Stop all adapters
-	if err := m.Stop(); err != nil {
-		return err
+	if stopErr := m.Stop(); stopErr != nil {
+		err = stopErr
+		return
 	}
 
 	// Wait for any background work to complete
 	m.wg.Wait()
 
-	return nil
+	return
 }
 
 // List returns a list of all registered adapter IDs.
