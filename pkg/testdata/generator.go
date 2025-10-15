@@ -129,7 +129,7 @@ func RunTestScenarioWithProgress(ctx context.Context, scenario TestScenario, eve
 	return calculateMetrics(scenario, latencies, testDuration, &gcStatsBefore, &gcStatsAfter), nil
 }
 
-func generateEvent(scenario TestScenario, index int) (event.Event, int) {
+func generateEvent(scenario TestScenario, index int) (*event.Event, int) {
 	var payload interface{}
 	var payloadSize int
 
@@ -159,7 +159,7 @@ func generateEvent(scenario TestScenario, index int) (event.Event, int) {
 
 	data, _ := json.Marshal(payload)
 
-	return event.Event{
+	return &event.Event{
 		ID:        fmt.Sprintf("test-%d", index),
 		Type:      "test.event",
 		Source:    "testdata-generator",

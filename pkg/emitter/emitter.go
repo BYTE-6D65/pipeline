@@ -36,7 +36,7 @@ type Emitter interface {
 	// Returns ErrNotInitialized if the emitter hasn't been set up.
 	// Returns ErrInvalidPayload if the event data cannot be parsed.
 	// Returns ErrUnsupportedEvent if the event type is not supported.
-	Emit(ctx context.Context, evt event.Event) error
+	Emit(ctx context.Context, evt *event.Event) error
 
 	// Close gracefully shuts down the emitter and releases resources.
 	// Safe to call multiple times (idempotent).

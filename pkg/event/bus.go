@@ -13,7 +13,7 @@ import (
 // Bus defines the interface for an event bus that supports publish/subscribe patterns.
 type Bus interface {
 	// Publish sends an event to all subscribers
-	Publish(ctx context.Context, evt Event) error
+	Publish(ctx context.Context, evt *Event) error
 
 	// Subscribe creates a subscription with optional filtering
 	Subscribe(ctx context.Context, filter Filter) (Subscription, error)
@@ -37,7 +37,7 @@ type Filter struct {
 // Subscription represents an active subscription to an event bus.
 type Subscription interface {
 	// Events returns a channel that receives matching events
-	Events() <-chan Event
+	Events() <-chan *Event
 
 	// Close unsubscribes and releases resources
 	Close() error
@@ -110,7 +110,7 @@ func NewInMemoryBus(opts ...BusOption) *InMemoryBus {
 }
 
 // Publish sends an event to all matching subscribers.
-func (b *InMemoryBus) Publish(ctx context.Context, evt Event) error {
+func (b *InMemoryBus) Publish(ctx context.Context, evt *Event) error {
 	// Start timing the entire publish operation
 	publishTimer := telemetry.NewTimer()
 	defer func() {
@@ -168,7 +168,7 @@ func (b *InMemoryBus) Subscribe(ctx context.Context, filter Filter) (Subscriptio
 		id:         fmt.Sprintf("sub-%d", len(b.subscriptions)),
 		bus:        b,
 		filter:     filter,
-		ch:         make(chan Event, b.bufferSize),
+		ch:         make(chan *Event, b.bufferSize),
 		closed:     false,
 		bufferSize: b.bufferSize,
 	}
@@ -210,14 +210,14 @@ type inMemorySubscription struct {
 	id         string
 	bus        *InMemoryBus
 	filter     Filter
-	ch         chan Event
+	ch         chan *Event
 	mu         sync.Mutex
 	closed     bool
 	bufferSize int
 }
 
 // Events returns the channel that receives events.
-func (s *inMemorySubscription) Events() <-chan Event {
+func (s *inMemorySubscription) Events() <-chan *Event {
 	return s.ch
 }
 
@@ -249,7 +249,7 @@ func (s *inMemorySubscription) closeChannel() {
 }
 
 // send attempts to send an event to the subscription channel.
-func (s *inMemorySubscription) send(evt Event, dropSlow bool, busName string, metrics *telemetry.Metrics) {
+func (s *inMemorySubscription) send(evt *Event, dropSlow bool, busName string, metrics *telemetry.Metrics) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -299,7 +299,7 @@ func (s *inMemorySubscription) send(evt Event, dropSlow bool, busName string, me
 }
 
 // matches checks if an event matches the subscription filter.
-func (s *inMemorySubscription) matches(evt Event) bool {
+func (s *inMemorySubscription) matches(evt *Event) bool {
 	// If no filters specified, match all events
 	if len(s.filter.Types) == 0 && len(s.filter.Sources) == 0 && len(s.filter.Metadata) == 0 {
 		return true

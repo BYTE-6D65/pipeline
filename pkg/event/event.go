@@ -1,9 +1,9 @@
 package event
 
 import (
-	"encoding/json"
 	"time"
 
+	"github.com/go-json-experiment/json"
 	"github.com/google/uuid"
 )
 

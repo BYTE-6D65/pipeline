@@ -82,7 +82,7 @@ func New(opts ...EngineOption) *Engine {
 
 	if engine.internalBus == nil {
 		engine.internalBus = event.NewInMemoryBus(
-			event.WithBufferSize(64),
+			event.WithBufferSize(32),
 			event.WithDropSlow(false),
 			event.WithBusName("internal"),
 			event.WithMetrics(engine.metrics),
@@ -91,7 +91,7 @@ func New(opts ...EngineOption) *Engine {
 
 	if engine.externalBus == nil {
 		engine.externalBus = event.NewInMemoryBus(
-			event.WithBufferSize(128),
+			event.WithBufferSize(32),
 			event.WithDropSlow(false),
 			event.WithBusName("external"),
 			event.WithMetrics(engine.metrics),
