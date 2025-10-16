@@ -70,12 +70,16 @@ func TestAIMDGovernor_DegradedToRecovering(t *testing.T) {
 }
 
 func TestAIMDGovernor_RecoveringToNormal(t *testing.T) {
-	clk := clock.NewSystemClock()
-	gov := NewDefaultAIMDGovernor(clk, 30*time.Second)
+	fakeClk := newTestClock()
+	gov := NewDefaultAIMDGovernor(fakeClk, 30*time.Second)
 
 	// Force into recovering state at scale=0.9
 	gov.state = StateRecovering
 	gov.scale = 0.9
+	gov.lastScaleChange = fakeClk.Now() // Set initial time
+
+	// Advance time past cooldown
+	fakeClk.Advance(31 * time.Second)
 
 	// Update with pressure below exit threshold
 	gov.Update(0.50)
@@ -85,6 +89,9 @@ func TestAIMDGovernor_RecoveringToNormal(t *testing.T) {
 	if math.Abs(gov.Scale()-expectedScale) > 0.01 {
 		t.Errorf("Scale after +0.05 = %.2f, want %.2f", gov.Scale(), expectedScale)
 	}
+
+	// Advance time again
+	fakeClk.Advance(31 * time.Second)
 
 	// Update again - should reach 1.0 and transition to Normal
 	gov.Update(0.50)
@@ -119,12 +126,16 @@ func TestAIMDGovernor_RecoveringBackToDegraded(t *testing.T) {
 }
 
 func TestAIMDGovernor_CriticalPressure(t *testing.T) {
-	clk := clock.NewSystemClock()
-	gov := NewDefaultAIMDGovernor(clk, 30*time.Second)
+	fakeClk := newTestClock()
+	gov := NewDefaultAIMDGovernor(fakeClk, 30*time.Second)
 
 	// Force into degraded state at scale=0.5
 	gov.state = StateDegraded
 	gov.scale = 0.5
+	gov.lastScaleChange = fakeClk.Now() // Set initial time
+
+	// Advance time past cooldown
+	fakeClk.Advance(31 * time.Second)
 
 	// Update with critical pressure (>90%)
 	gov.Update(0.95)
@@ -196,17 +207,20 @@ func TestAIMDGovernor_HysteresisGap(t *testing.T) {
 }
 
 func TestAIMDGovernor_AdditiveIncrease(t *testing.T) {
-	clk := clock.NewSystemClock()
-	gov := NewDefaultAIMDGovernor(clk, 30*time.Second)
+	fakeClk := newTestClock()
+	gov := NewDefaultAIMDGovernor(fakeClk, 30*time.Second)
 
 	// Force into recovering state at scale=0.5
 	gov.state = StateRecovering
 	gov.scale = 0.5
+	gov.lastScaleChange = fakeClk.Now() // Set initial time
 
 	// Track scale increases
 	scales := []float64{gov.Scale()}
 
 	for i := 0; i < 5; i++ {
+		// Advance time past cooldown before each update
+		fakeClk.Advance(31 * time.Second)
 		gov.Update(0.50) // Below exit threshold
 		scales = append(scales, gov.Scale())
 	}
@@ -221,8 +235,8 @@ func TestAIMDGovernor_AdditiveIncrease(t *testing.T) {
 }
 
 func TestAIMDGovernor_MultiplicativeDecrease(t *testing.T) {
-	clk := clock.NewSystemClock()
-	gov := NewDefaultAIMDGovernor(clk, 30*time.Second)
+	fakeClk := newTestClock()
+	gov := NewDefaultAIMDGovernor(fakeClk, 30*time.Second)
 
 	// Start at normal (scale=1.0)
 	initialScale := gov.Scale()
@@ -236,6 +250,9 @@ func TestAIMDGovernor_MultiplicativeDecrease(t *testing.T) {
 	if math.Abs(firstDecrease-expectedFirst) > 0.01 {
 		t.Errorf("First decrease: %.2f, want %.2f (×0.5)", firstDecrease, expectedFirst)
 	}
+
+	// Advance time past cooldown
+	fakeClk.Advance(31 * time.Second)
 
 	// Trigger another decrease
 	gov.Update(0.95)
