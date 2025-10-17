@@ -79,7 +79,7 @@ func main() {
 	// Allocate memory in chunks to trigger governor
 	log.Println("\nStarting memory stress test...")
 	log.Println("Allocating memory in 10MB chunks every 2 seconds...")
-	log.Println("Watch for governor state changes as memory pressure increases!\n")
+	log.Println("Watch for governor state changes as memory pressure increases!")
 
 	var chunks [][]byte
 	chunkSize := 10 * 1024 * 1024 // 10MB

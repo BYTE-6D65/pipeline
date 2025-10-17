@@ -127,6 +127,11 @@ func (b *InMemoryBus) Publish(ctx context.Context, evt *Event) error {
 		return fmt.Errorf("bus is closed")
 	}
 
+	// Check context before processing
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	// Collect matching subscriptions
 	var matching []*inMemorySubscription
 	for _, sub := range b.subscriptions {
