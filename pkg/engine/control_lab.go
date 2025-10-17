@@ -15,6 +15,12 @@ import (
 // sends control commands to InternalBus (control output). It's a laboratory that
 // analyzes system state and produces control decisions, not a loop.
 //
+// Event Flow:
+//   - Input: Reads memory stats directly (no event subscription)
+//   - Analysis: Calculates desired governor scale based on AIMD algorithm
+//   - Output: Publishes GovernorScaleCommand to InternalBus
+//   - Observability: Publishes state changes to ErrorBus
+//
 // The control lab manages:
 //   - AIMD Governor: Scales based on memory pressure (governor handles cooldown internally)
 //   - RED Dropper: Tracks buffer saturation (future integration)
@@ -22,9 +28,10 @@ import (
 // It emits control events when state changes occur (e.g., entering degraded mode).
 type ControlLab struct {
 	// Components
-	errorBus *event.ErrorBus // Write-only (emit observability events)
-	governor *AIMDGovernor
-	red      *REDDropper
+	errorBus    *event.ErrorBus       // Write-only (emit observability events)
+	internalBus *event.InMemoryBus    // Write-only (emit control commands)
+	governor    *AIMDGovernor
+	red         *REDDropper
 
 	// Time source
 	clock clock.Clock // Injected clock for testability
@@ -43,14 +50,16 @@ type ControlLab struct {
 // Parameters:
 //   - clk: Clock for time tracking (use engine's clock for consistency)
 //   - errorBus: Error bus for emitting observability events (write-only)
-//   - governor: AIMD governor to update (governor handles cooldown internally)
+//   - internalBus: Internal bus for emitting control commands (write-only)
+//   - governor: AIMD governor to read state (governor subscribes to internalBus separately)
 //   - red: RED dropper for future integration
 //   - memoryLimit: Memory limit for polling state
 //   - pollInterval: How often to poll and update (e.g., 50ms)
-func NewControlLab(clk clock.Clock, errorBus *event.ErrorBus, governor *AIMDGovernor, red *REDDropper, memoryLimit uint64, pollInterval time.Duration) *ControlLab {
+func NewControlLab(clk clock.Clock, errorBus *event.ErrorBus, internalBus *event.InMemoryBus, governor *AIMDGovernor, red *REDDropper, memoryLimit uint64, pollInterval time.Duration) *ControlLab {
 	return &ControlLab{
 		clock:        clk,
 		errorBus:     errorBus,
+		internalBus:  internalBus,
 		governor:     governor,
 		red:          red,
 		memoryLimit:  memoryLimit,
@@ -96,7 +105,16 @@ func (cl *ControlLab) runGovernor(ctx context.Context) {
 	}
 }
 
-// updateGovernor polls memory state, updates governor, and emits events.
+// updateGovernor polls memory state, calculates desired scale, and publishes control commands.
+//
+// Hybrid approach (Phase 3 transition):
+//  1. Read memory pressure
+//  2. Calculate desired scale using AIMD logic
+//  3. Publish GovernorScaleCommand to InternalBus (event-driven)
+//  4. Also call governor.Update() directly (for backward compatibility during transition)
+//  5. Emit observability events when state changes
+//
+// TODO: Remove direct governor.Update() call once fully event-driven (Phase 4+)
 func (cl *ControlLab) updateGovernor() {
 	// Poll memory state directly (no events)
 	stats := ReadMemoryStatsFast(cl.memoryLimit)
@@ -105,7 +123,7 @@ func (cl *ControlLab) updateGovernor() {
 	// Save previous state/scale to detect changes
 	prevScale := cl.governor.Scale()
 
-	// Update governor (governor handles cooldown internally)
+	// Update governor directly (backward compatibility - will be removed in Phase 4+)
 	cl.governor.Update(memPressure)
 
 	// Check for changes
@@ -123,6 +141,26 @@ func (cl *ControlLab) updateGovernor() {
 	if scaleChange > 0.05 || scaleChange < -0.05 {
 		cl.emitScaleChange(currentScale, scaleChange, memPressure)
 		cl.lastScale = currentScale
+
+		// Publish scale command to InternalBus (event-driven control)
+		// This enables observability and allows other components to react
+		cmd := event.GovernorScaleCommand{
+			Scale:     currentScale,
+			Reason:    fmt.Sprintf("Memory pressure %.1f%% (state: %s)", memPressure*100, currentState),
+			Source:    "control-lab",
+			Timestamp: time.Now(),
+		}
+
+		evt := event.NewControlEvent(event.EventTypeGovernorScale, cmd)
+		if err := cl.internalBus.Publish(context.Background(), evt); err != nil {
+			// Log error via error bus but don't crash
+			cl.errorBus.Publish(event.NewErrorEvent(
+				event.WarningSeverity,
+				event.CodeHealthCheck,
+				"control-lab",
+				fmt.Sprintf("Failed to publish governor scale command: %v", err),
+			))
+		}
 	}
 }
 

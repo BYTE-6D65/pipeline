@@ -113,6 +113,14 @@ func NewWithConfig(cfg Config, opts ...EngineOption) (*Engine, error) {
 	redDropper := NewDefaultREDDropper()
 	aimdGovernor := NewDefaultAIMDGovernor(engineClock, cfg.ControlCooldown)
 
+	// Create internal bus early (needed by control lab)
+	internalBus := event.NewInMemoryBus(
+		event.WithBufferSize(32),
+		event.WithDropSlow(false),
+		event.WithBusName("internal"),
+		event.WithMetrics(telemetry.Default()),
+	)
+
 	engine := &Engine{
 		clock:          engineClock,
 		registry:       registry.NewInMemoryRegistry(),
@@ -126,12 +134,14 @@ func NewWithConfig(cfg Config, opts ...EngineOption) (*Engine, error) {
 		monitorCancel:  monitorCancel,
 		redDropper:     redDropper,
 		aimdGovernor:   aimdGovernor,
+		internalBus:    internalBus,
 	}
 
-	// Create control lab (analyzes state, emits to error bus for observability)
+	// Create control lab (analyzes state, publishes to internal bus)
 	engine.controlLab = NewControlLab(
 		engineClock,
 		errorBus,
+		internalBus,
 		aimdGovernor,
 		redDropper,
 		memLimit, // Memory limit for direct polling
@@ -148,7 +158,8 @@ func NewWithConfig(cfg Config, opts ...EngineOption) (*Engine, error) {
 		engine.metrics = telemetry.Default()
 	}
 
-	// Create default buses if not provided
+	// Internal bus was created earlier for control lab
+	// Apply options can override it if needed
 	if engine.internalBus == nil {
 		engine.internalBus = event.NewInMemoryBus(
 			event.WithBufferSize(32),
@@ -165,6 +176,13 @@ func NewWithConfig(cfg Config, opts ...EngineOption) (*Engine, error) {
 			event.WithBusName("external"),
 			event.WithMetrics(engine.metrics),
 		)
+	}
+
+	// Start governor subscription to internal bus (Phase 2)
+	if aimdGovernor != nil {
+		if err := aimdGovernor.Start(monitorCtx, internalBus); err != nil {
+			return nil, fmt.Errorf("failed to start governor subscription: %w", err)
+		}
 	}
 
 	// Start monitors
