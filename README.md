@@ -93,20 +93,6 @@ pkg/
 └── testdata/       # Test data generators and scenarios
 ```
 
-### Event Flow
-
-```
-Event Source → Adapter → Internal Bus → Engine → External Bus → Emitter → Event Sink
-                   ↓                                    ↓
-            Raw Events                          Processed Events
-```
-
-**Example Flow:**
-1. Adapter captures events from external source
-2. Adapter publishes to `InternalBus`
-3. `Engine` routes to `ExternalBus`
-4. Subscribers receive processed events
-5. Emitters send to external sinks
 
 ## 📚 Core Packages
 
@@ -311,7 +297,7 @@ MIT License - See LICENSE file for details
 
 ---
 
-**Status:** Production-ready, actively maintained
+**Status:** active development 
 
 **Author:** BYTE-6D65
 
