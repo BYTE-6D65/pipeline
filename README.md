@@ -1,18 +1,17 @@
 # Pipeline
 
-**A high-performance, event-driven processing pipeline with real-time event bus and pluggable adapters.**
+**An event-driven processing pipeline with real-time event bus and pluggable adapters.**
 
-Pipeline is a Go library providing a flexible event processing infrastructure. Built with clean architecture principles, it offers a publish/subscribe event bus, ordered event storage, adapter/emitter management, and a beautiful interactive TUI for testing and demonstration.
+Pipeline is a Go library providing a flexible event processing infrastructure. Built with clean architecture principles, it offers a publish/subscribe event bus, ordered event storage, adapter/emitter management, graceful degradation under memory pressure, and a beautiful interactive TUI for testing and demonstration.
 
 ## ✨ Features
 
-- 🎯 **Event-Driven Architecture** - Clean publish/subscribe model with 90.8% test coverage
-- ⚡ **High Performance** - Designed for high-throughput event processing with sub-millisecond precision
+- 🎯 **Event-Driven Architecture** - Clean publish/subscribe model with graceful degradation
 - 🔄 **Real-time Processing** - Ordered event storage with time-based queries and chord detection
 - 🧩 **Pluggable Components** - Interface-based adapters and emitters for any event source/sink
 - 📦 **Generic Registry** - Thread-safe key-value store with type-safe wrappers
 - 🎮 **Interactive TUI** - Beautiful Bubble Tea interface for testing and demonstration
-- 🧪 **Thoroughly Tested** - Comprehensive test suite with 90.8% coverage including stress tests
+- 🧪 **Well-Tested** - Unit tests for core algorithms, behavior tests for system validation
 
 ## 🚀 Quick Start
 
@@ -197,34 +196,34 @@ sm.Trigger("trigger") // State is now "next"
 ### Run Tests
 
 ```bash
-# Run all tests
+# Run unit tests
 go test ./pkg/...
 
-# Run with coverage
-go test -cover ./pkg/...
-
-# Generate coverage report
-go test -coverprofile=coverage.out ./pkg/...
-go tool cover -html=coverage.out
+# Run behavior tests (validates system-level behavior)
+cd cmd/behavior-test
+go run .
 ```
 
-### Test Coverage
+### Testing Strategy
 
-| Package | Coverage | Status |
-|---------|----------|--------|
-| pkg/event | 98.2% | ✅ Excellent |
-| pkg/registry | 100.0% | ✅ Perfect |
-| pkg/engine | 89.2% | ✅ Good |
-| pkg/clock | 98.1% | ✅ Excellent |
-| pkg/statemachine | 97.5% | ✅ Excellent |
-| **Overall** | **90.8%** | ✅ Strong |
+We use a two-tier testing approach:
 
-### Test Categories
+**Unit Tests**: Validate core algorithms and data structures
+- AIMD governor state machine (85-100% coverage)
+- RED dropper probability calculations (100% coverage)
+- Event bus filtering and delivery (65% coverage)
+- Registry and state machine operations (97-100% coverage)
 
-- **Unit Tests** (35): Core functionality
-- **Integration Tests** (8): Full pipeline flows
-- **Stress Tests** (3): 1000+ events, 10MB payloads
-- **Edge Cases** (15): Boundaries, empty states, inversions
+**Behavior Tests**: Validate system-level behavior under real conditions
+- Memory pressure detection and response
+- Graceful degradation under load
+- Recovery after pressure relief
+- End-to-end event flows
+- Control loop interactions
+
+**Note**: The `pkg/engine` package has low unit test coverage (~17%) by design. It's an integration layer validated primarily through behavior tests that simulate real-world scenarios. Unit test coverage metrics don't reflect the true test quality of the system.
+
+See `docs/private/COVERAGE_REPORT.md` for detailed test analysis.
 
 ## 🎯 Use Cases
 
@@ -232,7 +231,7 @@ go tool cover -html=coverage.out
 Build event-driven systems with pluggable sources and sinks.
 
 ### Real-time Data Processing
-Process high-throughput event streams with ordered storage and time-based queries.
+Process event streams with ordered storage and time-based queries.
 
 ### Input Device Management
 Capture and process input from keyboards, mice, gamepads (see [CmdWhl](https://github.com/BYTE-6D65/CmdWhl) for example).
@@ -308,7 +307,7 @@ MIT License - See LICENSE file for details
 
 - Built with [Bubble Tea](https://github.com/charmbracelet/bubbletea) for the TUI
 - Event architecture inspired by CQRS/Event Sourcing patterns
-- Designed for high-performance real-world applications
+- Graceful degradation inspired by TCP congestion control (AIMD)
 
 ---
 

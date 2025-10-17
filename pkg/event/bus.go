@@ -127,6 +127,11 @@ func (b *InMemoryBus) Publish(ctx context.Context, evt *Event) error {
 		return fmt.Errorf("bus is closed")
 	}
 
+	// Check context before processing
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+
 	// Collect matching subscriptions
 	var matching []*inMemorySubscription
 	for _, sub := range b.subscriptions {
@@ -142,15 +147,24 @@ func (b *InMemoryBus) Publish(ctx context.Context, evt *Event) error {
 		}
 	}
 
-	// Send to all matching subscriptions
+	// Send to all matching subscriptions in parallel
+	// Each subscriber gets its own goroutine to avoid head-of-line blocking
+	var wg sync.WaitGroup
 	for _, sub := range matching {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		default:
-			sub.send(evt, b.dropSlow, b.name, b.metrics)
-		}
+		wg.Add(1)
+		go func(s *inMemorySubscription) {
+			defer wg.Done()
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				s.send(evt, b.dropSlow, b.name, b.metrics)
+			}
+		}(sub)
 	}
+
+	// Wait for all sends to complete
+	wg.Wait()
 
 	return nil
 }

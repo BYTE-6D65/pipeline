@@ -89,7 +89,7 @@ func TestBus_PublishAndReceive(t *testing.T) {
 	}
 	defer sub.Close()
 
-	evt := Event{
+	evt := &Event{
 		ID:     "test-1",
 		Type:   "test.event",
 		Source: "test-source",
@@ -127,7 +127,7 @@ func TestBus_PublishToMultipleSubscribers(t *testing.T) {
 		subs[i] = sub
 	}
 
-	evt := Event{
+	evt := &Event{
 		ID:     "broadcast",
 		Type:   "test.event",
 		Source: "test",
@@ -165,13 +165,13 @@ func TestBus_FilterByType(t *testing.T) {
 	defer sub.Close()
 
 	// Publish matching event
-	matchingEvt := Event{ID: "1", Type: "user.created", Source: "test"}
+	matchingEvt := &Event{ID: "1", Type: "user.created", Source: "test"}
 	if err := bus.Publish(ctx, matchingEvt); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
 
 	// Publish non-matching event
-	nonMatchingEvt := Event{ID: "2", Type: "product.created", Source: "test"}
+	nonMatchingEvt := &Event{ID: "2", Type: "product.created", Source: "test"}
 	if err := bus.Publish(ctx, nonMatchingEvt); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -209,10 +209,10 @@ func TestBus_FilterBySource(t *testing.T) {
 	defer sub.Close()
 
 	// Publish matching event
-	bus.Publish(ctx, Event{ID: "1", Type: "test", Source: "source-a"})
+	bus.Publish(ctx, &Event{ID: "1", Type: "test", Source: "source-a"})
 
 	// Publish non-matching event
-	bus.Publish(ctx, Event{ID: "2", Type: "test", Source: "source-b"})
+	bus.Publish(ctx, &Event{ID: "2", Type: "test", Source: "source-b"})
 
 	select {
 	case received := <-sub.Events():
@@ -246,7 +246,7 @@ func TestBus_FilterByMetadata(t *testing.T) {
 	defer sub.Close()
 
 	// Publish matching event
-	matchingEvt := Event{
+	matchingEvt := &Event{
 		ID:       "1",
 		Type:     "test",
 		Source:   "test",
@@ -255,7 +255,7 @@ func TestBus_FilterByMetadata(t *testing.T) {
 	bus.Publish(ctx, matchingEvt)
 
 	// Publish non-matching event
-	nonMatchingEvt := Event{
+	nonMatchingEvt := &Event{
 		ID:       "2",
 		Type:     "test",
 		Source:   "test",
@@ -299,7 +299,7 @@ func TestBus_CombinedFilters(t *testing.T) {
 	defer sub.Close()
 
 	// Publish fully matching event
-	matchingEvt := Event{
+	matchingEvt := &Event{
 		ID:       "1",
 		Type:     "user.created",
 		Source:   "api",
@@ -308,9 +308,9 @@ func TestBus_CombinedFilters(t *testing.T) {
 	bus.Publish(ctx, matchingEvt)
 
 	// Publish partially matching events (should not match)
-	bus.Publish(ctx, Event{ID: "2", Type: "product.created", Source: "api", Metadata: map[string]string{"env": "test"}})
-	bus.Publish(ctx, Event{ID: "3", Type: "user.created", Source: "worker", Metadata: map[string]string{"env": "test"}})
-	bus.Publish(ctx, Event{ID: "4", Type: "user.created", Source: "api", Metadata: map[string]string{"env": "prod"}})
+	bus.Publish(ctx, &Event{ID: "2", Type: "product.created", Source: "api", Metadata: map[string]string{"env": "test"}})
+	bus.Publish(ctx, &Event{ID: "3", Type: "user.created", Source: "worker", Metadata: map[string]string{"env": "test"}})
+	bus.Publish(ctx, &Event{ID: "4", Type: "user.created", Source: "api", Metadata: map[string]string{"env": "prod"}})
 
 	select {
 	case received := <-sub.Events():
@@ -348,7 +348,7 @@ func TestBus_Unsubscribe(t *testing.T) {
 	}
 
 	// Publish event after unsubscribe
-	evt := Event{ID: "1", Type: "test", Source: "test"}
+	evt := &Event{ID: "1", Type: "test", Source: "test"}
 	if err := bus.Publish(ctx, evt); err != nil {
 		t.Fatalf("Publish failed: %v", err)
 	}
@@ -390,7 +390,7 @@ func TestBus_Close(t *testing.T) {
 	}
 
 	// Verify cannot publish after close
-	evt := Event{ID: "1", Type: "test", Source: "test"}
+	evt := &Event{ID: "1", Type: "test", Source: "test"}
 	if err := bus.Publish(ctx, evt); err == nil {
 		t.Error("Expected error when publishing to closed bus")
 	}
@@ -411,7 +411,7 @@ func TestBus_PublishWithContextCancel(t *testing.T) {
 
 	// Fill the buffer
 	for i := 0; i < 64; i++ {
-		evt := Event{ID: "fill", Type: "test", Source: "test"}
+		evt := &Event{ID: "fill", Type: "test", Source: "test"}
 		if err := bus.Publish(ctx, evt); err != nil {
 			t.Fatalf("Publish %d failed: %v", i, err)
 		}
@@ -421,7 +421,7 @@ func TestBus_PublishWithContextCancel(t *testing.T) {
 	cancel()
 
 	// Try to publish with cancelled context
-	evt := Event{ID: "cancelled", Type: "test", Source: "test"}
+	evt := &Event{ID: "cancelled", Type: "test", Source: "test"}
 	err = bus.Publish(ctx, evt)
 	if err == nil {
 		t.Error("Expected error when publishing with cancelled context")
@@ -450,7 +450,7 @@ func TestBus_ConcurrentPublish(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for j := 0; j < eventsPerPublisher; j++ {
-				evt := Event{
+				evt := &Event{
 					ID:     fmt.Sprintf("pub-%d-evt-%d", id, j),
 					Type:   "test",
 					Source: "concurrent",
@@ -525,7 +525,7 @@ func TestBus_DropSlow(t *testing.T) {
 
 	// Publish more events than buffer can hold
 	for i := 0; i < 10; i++ {
-		evt := Event{ID: fmt.Sprintf("evt-%d", i), Type: "test", Source: "test"}
+		evt := &Event{ID: fmt.Sprintf("evt-%d", i), Type: "test", Source: "test"}
 		if err := bus.Publish(ctx, evt); err != nil {
 			t.Fatalf("Publish %d failed: %v", i, err)
 		}
@@ -563,7 +563,7 @@ func TestBus_EmptyFilter_MatchesAll(t *testing.T) {
 	}
 	defer sub.Close()
 
-	events := []Event{
+	events := []*Event{
 		{ID: "1", Type: "user.created", Source: "api"},
 		{ID: "2", Type: "product.updated", Source: "worker"},
 		{ID: "3", Type: "order.deleted", Source: "scheduler"},

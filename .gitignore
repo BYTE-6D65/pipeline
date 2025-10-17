@@ -28,3 +28,4 @@ go.work
 
 # Logs
 *.log
+docs/private/

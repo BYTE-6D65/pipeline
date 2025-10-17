@@ -78,7 +78,7 @@ func TestEngine_DefaultComponents(t *testing.T) {
 	// Test that buses work
 	ctx := context.Background()
 
-	evt := event.Event{
+	evt := &event.Event{
 		ID:     "test",
 		Type:   "test.event",
 		Source: "test",
@@ -168,7 +168,7 @@ func TestEngine_Shutdown(t *testing.T) {
 	}
 
 	// Verify buses are closed by trying to publish
-	evt := event.Event{
+	evt := &event.Event{
 		ID:     "test",
 		Type:   "test.event",
 		Source: "test",
@@ -225,7 +225,7 @@ func TestEngine_InternalBusIsolation(t *testing.T) {
 	defer externalSub.Close()
 
 	// Publish to internal bus
-	internalEvt := event.Event{
+	internalEvt := &event.Event{
 		ID:     "internal",
 		Type:   "internal.event",
 		Source: "test",
@@ -235,7 +235,7 @@ func TestEngine_InternalBusIsolation(t *testing.T) {
 	}
 
 	// Publish to external bus
-	externalEvt := event.Event{
+	externalEvt := &event.Event{
 		ID:     "external",
 		Type:   "external.event",
 		Source: "test",
@@ -335,7 +335,7 @@ func TestEngine_IntegrationTest(t *testing.T) {
 	defer sub.Close()
 
 	// Publish event with timestamp from engine clock
-	evt := event.Event{
+	evt := &event.Event{
 		ID:        "test-1",
 		Type:      "test.event",
 		Source:    "integration-test",

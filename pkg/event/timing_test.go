@@ -25,12 +25,12 @@ func TestEventBus_SubMillisecondTiming(t *testing.T) {
 	const numEvents = 10
 	const targetInterval = 10 * time.Millisecond // 10ms between events
 
-	events := make([]Event, numEvents)
+	events := make([]*Event, numEvents)
 	start := time.Now()
 
 	// Publish events as fast as possible
 	for i := 0; i < numEvents; i++ {
-		events[i] = Event{
+		events[i] = &Event{
 			ID:        fmt.Sprintf("key-%d", i),
 			Type:      "keyboard.press",
 			Source:    "test",
@@ -51,7 +51,7 @@ func TestEventBus_SubMillisecondTiming(t *testing.T) {
 		numEvents, publishDuration, publishDuration/numEvents)
 
 	// Receive and verify timing precision
-	received := make([]Event, 0, numEvents)
+	received := make([]*Event, 0, numEvents)
 	timeout := time.After(1 * time.Second)
 
 	for i := 0; i < numEvents; i++ {
@@ -132,7 +132,7 @@ func TestEventBus_HighFrequencyTyping(t *testing.T) {
 	go func() {
 		for _, key := range keys {
 			// Press event
-			press := Event{
+			press := &Event{
 				ID:        fmt.Sprintf("press-%s", key),
 				Type:      "keyboard.press",
 				Source:    "typing-test",
@@ -145,7 +145,7 @@ func TestEventBus_HighFrequencyTyping(t *testing.T) {
 			time.Sleep(20 * time.Millisecond)
 
 			// Release event
-			release := Event{
+			release := &Event{
 				ID:        fmt.Sprintf("release-%s", key),
 				Type:      "keyboard.release",
 				Source:    "typing-test",
@@ -161,7 +161,7 @@ func TestEventBus_HighFrequencyTyping(t *testing.T) {
 
 	// Collect all events
 	const expectedEvents = 10 // 5 keys × 2 (press + release)
-	received := make([]Event, 0, expectedEvents)
+	received := make([]*Event, 0, expectedEvents)
 	timeout := time.After(2 * time.Second)
 
 	for len(received) < expectedEvents {
@@ -174,7 +174,7 @@ func TestEventBus_HighFrequencyTyping(t *testing.T) {
 	}
 
 	// Analyze press-to-press intervals (chord speed)
-	pressEvents := make([]Event, 0, len(keys))
+	pressEvents := make([]*Event, 0, len(keys))
 	for _, evt := range received {
 		if evt.Type == "keyboard.press" {
 			pressEvents = append(pressEvents, evt)
