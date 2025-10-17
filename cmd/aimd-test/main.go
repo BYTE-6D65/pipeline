@@ -60,7 +60,7 @@ func main() {
 	go func() {
 		for evt := range sub.Events() {
 			// Print control loop events
-			if evt.Component == "control-loop" || evt.Component == "control-loop:governor" {
+			if evt.Component == "control-lab" || evt.Component == "control-lab:governor" {
 				fmt.Printf("\n[CONTROL EVENT] %s\n", time.Now().Format("15:04:05.000"))
 				fmt.Printf("  Severity:    %s\n", evt.Severity)
 				fmt.Printf("  Code:        %s\n", evt.Code)

@@ -330,7 +330,7 @@ func printControlEvents(sub *event.ErrorSubscription, tracker *EventTracker) {
 
 	for evt := range sub.Events() {
 		// Only print control loop events
-		if evt.Component != "control-loop" && evt.Component != "control-loop:governor" {
+		if evt.Component != "control-lab" && evt.Component != "control-lab:governor" {
 			continue
 		}
 

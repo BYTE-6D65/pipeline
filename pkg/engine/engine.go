@@ -37,9 +37,9 @@ type Engine struct {
 	crashDumpMu      sync.Mutex
 
 	// Graceful degradation (Phase 2)
-	redDropper   *REDDropper
+	redDropper  *REDDropper
 	aimdGovernor *AIMDGovernor
-	controlLoop  *ControlLoop
+	controlLab  *ControlLab
 }
 
 // EngineOption configures an Engine instance.
@@ -128,8 +128,8 @@ func NewWithConfig(cfg Config, opts ...EngineOption) (*Engine, error) {
 		aimdGovernor:   aimdGovernor,
 	}
 
-	// Create control loop (polls state directly, emits to error bus for observability)
-	engine.controlLoop = NewControlLoop(
+	// Create control lab (analyzes state, emits to error bus for observability)
+	engine.controlLab = NewControlLab(
 		engineClock,
 		errorBus,
 		aimdGovernor,
@@ -264,10 +264,10 @@ func (e *Engine) RED() *REDDropper {
 	return e.redDropper
 }
 
-// ControlLoop returns the control loop.
+// ControlLab returns the control lab.
 // Returns nil if engine was created with New() instead of NewWithConfig().
-func (e *Engine) ControlLoop() *ControlLoop {
-	return e.controlLoop
+func (e *Engine) ControlLab() *ControlLab {
+	return e.controlLab
 }
 
 // startMonitors starts background monitoring goroutines.
@@ -306,10 +306,10 @@ func (e *Engine) startMonitors() {
 		e.psiMonitor.Start(e.monitorCtx)
 	})
 
-	// Start control loop (Phase 2 - polls state, emits to error bus)
-	if e.controlLoop != nil {
-		e.WrapGoroutine("control-loop", func() {
-			e.controlLoop.Start(e.monitorCtx)
+	// Start control lab (Phase 2 - analyzes state, emits to error bus)
+	if e.controlLab != nil {
+		e.WrapGoroutine("control-lab", func() {
+			e.controlLab.Start(e.monitorCtx)
 		})
 	}
 }

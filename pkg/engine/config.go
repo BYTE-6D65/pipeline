@@ -21,10 +21,10 @@ type Config struct {
 	MemoryCriticalPct    float64       `env:"PIPELINE_MEM_CRITICAL_PCT" default:"0.90"`  // Critical threshold
 	GovernorPollInterval time.Duration `env:"PIPELINE_GOVERNOR_POLL_MS" default:"50ms"`  // How often to check
 
-	// Control Loop
-	ControlLoopInterval time.Duration `env:"PIPELINE_CONTROL_INTERVAL" default:"3s"`  // Control loop tick
+	// Control Lab
+	ControlLoopInterval time.Duration `env:"PIPELINE_CONTROL_INTERVAL" default:"3s"`  // Control lab tick (kept as ControlLoopInterval for compatibility)
 	ControlCooldown     time.Duration `env:"PIPELINE_CONTROL_COOLDOWN" default:"30s"` // Min time between actions
-	MaxActionsPerLoop   int           `env:"PIPELINE_MAX_ACTIONS" default:"1"`        // Max actions per loop
+	MaxActionsPerLoop   int           `env:"PIPELINE_MAX_ACTIONS" default:"1"`        // Max actions per tick
 
 	// Queue/Buffer Sizing
 	QueueSizeStart int     `env:"PIPELINE_QUEUE_START" default:"128"`    // Initial queue size
@@ -77,7 +77,7 @@ func DefaultConfig() Config {
 		MemoryCriticalPct:    0.90,
 		GovernorPollInterval: 50 * time.Millisecond,
 
-		// Control Loop
+		// Control Lab
 		ControlLoopInterval: 3 * time.Second,
 		ControlCooldown:     30 * time.Second,
 		MaxActionsPerLoop:   1,
@@ -148,7 +148,7 @@ func LoadFromEnv() (Config, error) {
 		}
 	}
 
-	// Control loop
+	// Control lab
 	if v := os.Getenv("PIPELINE_CONTROL_INTERVAL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil {
 			cfg.ControlLoopInterval = d
@@ -343,7 +343,7 @@ func (c *Config) String() string {
     Max: %d
     Target Lag: %dms
 
-  Control Loop:
+  Control Lab:
     Interval: %s
     Cooldown: %s
 
